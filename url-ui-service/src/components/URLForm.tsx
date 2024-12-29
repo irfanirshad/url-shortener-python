@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Copy, Link2 } from 'lucide-react';
+import axios from 'axios';
 import { LoadingSpinner } from './LoadingSpinner';
 
 interface URLFormProps {
@@ -8,28 +9,32 @@ interface URLFormProps {
 
 export function URLForm({ isCustomMode }: URLFormProps) {
   const [url, setUrl] = useState('');
-  const [customUrl, setCustomUrl] = useState(''); // For custom URL input
+  const [customUrl, setCustomUrl] = useState('');
   const [isPublic, setIsPublic] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [shortenedURL, setShortenedURL] = useState('');
   const [error, setError] = useState('');
+  const [copySuccess, setCopySuccess] = useState(false); // State to track copy status
 
   // Clear custom URL when switching modes
   useEffect(() => {
     if (!isCustomMode) {
-      setCustomUrl(''); // Clear custom URL when switching to default mode
+      setCustomUrl('');
     }
   }, [isCustomMode]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setCopySuccess(false); // Reset copy status on new submission
     setIsLoading(true);
 
     try {
-      // Simulated API call - replace with actual implementation
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setShortenedURL(isCustomMode ? customUrl : 'https://short.url/abc123');
+      const apiUrl = 'https://bigshort.one/api/shorten-url'; // replace with your API endpoint
+      const requestData = isCustomMode ? { url, customUrl, isPublic } : { url, isPublic };
+
+      const response = await axios.post(apiUrl, requestData);
+      setShortenedURL(response.data.shortenedUrl);
     } catch (err) {
       setError('Failed to shorten URL. Please try again.');
     } finally {
@@ -40,6 +45,7 @@ export function URLForm({ isCustomMode }: URLFormProps) {
   const copyToClipboard = async () => {
     try {
       await navigator.clipboard.writeText(shortenedURL);
+      setCopySuccess(true); // Update copy success state
     } catch (err) {
       console.error('Failed to copy:', err);
     }
@@ -53,7 +59,7 @@ export function URLForm({ isCustomMode }: URLFormProps) {
           type="url"
           value={isCustomMode ? customUrl : url} // Use custom URL when in custom mode
           onChange={(e) => isCustomMode ? setCustomUrl(e.target.value) : setUrl(e.target.value)}
-          placeholder={isCustomMode ? "Paste in URL here" : "Paste in URL here"}
+          placeholder={isCustomMode ? "Enter your custom URL" : "Paste your URL here"}
           className={`w-full px-4 py-3 glossy-black rounded-lg outline-none transition-all
             ${isCustomMode 
               ? 'focus:ring-2 focus:ring-orange-500/50'
@@ -79,17 +85,19 @@ export function URLForm({ isCustomMode }: URLFormProps) {
       )}
 
       {/* Checkbox for public URL */}
-      <label className="flex items-center space-x-2 text-gray-300">
-        <input
-          type="checkbox"
-          checked={isPublic}
-          onChange={(e) => setIsPublic(e.target.checked)}
-          className={`w-4 h-4 rounded border-gray-600 
-            ${isCustomMode ? 'text-violet-500 focus:ring-violet-500' : 'text-teal-500 focus:ring-teal-500'}
-            bg-[#121212]`}
-        />
-        <span>Make this URL public on the dashboard</span>
-      </label>
+      {isCustomMode && (
+        <label className="flex items-center space-x-2 text-gray-300">
+          <input
+            type="checkbox"
+            checked={isPublic}
+            onChange={(e) => setIsPublic(e.target.checked)}
+            className={`w-4 h-4 rounded border-gray-600 
+              ${isCustomMode ? 'text-violet-500 focus:ring-violet-500' : 'text-teal-500 focus:ring-teal-500'}
+              bg-[#121212]`}
+          />
+          <span>Make this URL public on the dashboard</span>
+        </label>
+      )}
 
       {/* Display error message if any */}
       {error && (
@@ -123,6 +131,9 @@ export function URLForm({ isCustomMode }: URLFormProps) {
               <Copy size={20} className={isCustomMode ? 'text-violet-500' : 'text-teal-500'} />
             </button>
           </div>
+          {copySuccess && (
+            <p className="text-green-500 text-sm mt-2">Link copied to clipboard!</p>
+          )}
         </div>
       )}
     </form>
