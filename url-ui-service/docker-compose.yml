@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  ui-service:
+    build:
+      context: ./url-ui-service
+      dockerfile: Dockerfile
+    networks:
+      - app-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ui-service.rule=Host(`your-frontend-domain.com`)"
+      - "traefik.http.services.ui-service.loadbalancer.server.port=3000"
+    depends_on:
+      - backend
+
+networks:
+  app-network:
+    driver: bridge

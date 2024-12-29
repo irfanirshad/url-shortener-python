@@ -1,0 +1,92 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@700&family=Roboto+Mono&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --glass-gradient: linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.1));
+  --custom-glow: 0 8px 32px rgba(0, 0, 0, 0.36);
+  --bg-gradient: linear-gradient(135deg, #0A0A0A, #141414);
+
+}
+
+
+
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100vh;
+  background: 
+    radial-gradient(circle at 50% 0%, rgba(29, 233, 182, 0.15), transparent 50%),
+    radial-gradient(circle at 0% 100%, rgba(124, 58, 237, 0.1), transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* .glass-card {
+  background: var(--glass-gradient);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 
+    var(--custom-glow),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+} */
+
+input, .font-mono {
+  font-family: 'Roboto Mono', monospace;
+}
+
+/* Replace teal colors with neon or bright shades */
+.glossy-black {
+  background: linear-gradient(135deg, #1a1a1a, #0a0a0a);
+  position: relative;
+}
+
+.glossy-black::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+}
+
+.loader {
+  width: 24px;
+  height: 24px;
+  border: 3px solid #ffffff;
+  border-bottom-color: transparent;
+  border-radius: 50%;
+  display: inline-block;
+  box-sizing: border-box;
+  animation: rotation 1s linear infinite;
+  margin: 0 auto;
+}
+
+@keyframes rotation {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+body {
+  font-family: 'Poppins', sans-serif;
+  color: white; /* Global text color */
+  background: #0A0A0A; /* Black background */
+  min-height: 100vh;
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: var(--custom-glow), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.glow-text {
+  text-shadow: 0 0 10px rgba(29, 233, 182, 0.5), 0 0 30px rgba(124, 58, 237, 0.5);
+}
