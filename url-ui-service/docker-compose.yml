@@ -1,19 +1,17 @@
 version: '3.8'
 
 services:
-  ui-service:
+  ui:
     build:
-      context: ./url-ui-service
-      dockerfile: Dockerfile
-    networks:
-      - app-network
+      context: ./frontend  # Path to your frontend service
+    container_name: ui-service
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.ui-service.rule=Host(`your-frontend-domain.com`)"
-      - "traefik.http.services.ui-service.loadbalancer.server.port=3000"
+      - "traefik.enable=true"  # Enable Traefik for this service
+      - "traefik.http.routers.ui.rule=Host(`www.bigshort.one`)"  # Your domain
+      - "traefik.http.routers.ui.entrypoints=web,websecure"  # Enable both HTTP and HTTPS
+      - "traefik.http.routers.ui.tls=true"  # Enable TLS (SSL)
+      - "traefik.http.routers.ui.tls.certresolver=myresolver"  # Use Let's Encrypt resolver
+      - "traefik.http.services.ui.loadbalancer.server.port=80"  # Frontend runs on port 80 inside container
     depends_on:
-      - backend
-
-networks:
-  app-network:
-    driver: bridge
+      - traefik  # Traefik service, so it can route traffic here
+    restart: always

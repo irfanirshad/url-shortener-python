@@ -1,7 +1,7 @@
-# Use the official Node.js image as a base image
-FROM node:18-alpine
+# Use a base image with Node.js (adjust version as needed)
+FROM node:16
 
-# Set working directory inside container
+# Set working directory inside the container
 WORKDIR /app
 
 # Copy package.json and package-lock.json
@@ -10,17 +10,14 @@ COPY package*.json ./
 # Install dependencies
 RUN npm install
 
-# Copy the rest of the application files
+# Copy all the frontend source code
 COPY . .
 
-# Build the React app for production
+# Build the frontend (if using build step like with React, Vue, etc.)
 RUN npm run build
 
-# Expose the port your app will run on
-EXPOSE 3000
+# Expose port for the frontend application
+EXPOSE 80
 
-# Serve the app using a simple static file server (e.g., serve)
-RUN npm install -g serve
-
-# Run the app
-CMD ["serve", "-s", "dist", "-l", "3000"]
+# Start the frontend app
+CMD ["npm", "start"]
