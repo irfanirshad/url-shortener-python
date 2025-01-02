@@ -1,0 +1,12 @@
+- app/
+  - __init__.py
+  - controllers/
+    - url_controller.py
+  - models/
+    - url_model.py
+    - db.py
+  - services/
+    - url_service.py
+  - validation/
+    - url_validation.py
+  - main.py

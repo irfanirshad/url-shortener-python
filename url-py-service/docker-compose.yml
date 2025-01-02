@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: flask-url-shortener
+    ports:
+      - "5000:5000"
+    depends_on:
+      - redis1
+      - redis2
+      - postgres
+    environment:
+      REDIS1_HOST: redis1
+      REDIS2_HOST: redis2
+      REDIS_PORT: 6379
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: url_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_PORT: 5432
+
+  redis1:
+    image: redis:6.2
+    container_name: redis-primary
+    command: redis-server --appendonly yes
+
+  redis2:
+    image: redis:6.2
+    container_name: redis-secondary
+    command: redis-server --appendonly yes
+
+  postgres:
+    image: postgres:13
+    container_name: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: url_db
+    ports:
+      - "5432:5432"
