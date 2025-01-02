@@ -101,8 +101,7 @@ def resolve_url(short_url):
     logger.warning(f"URL not found: {short_url}")
     return jsonify({'error': 'URL not found.'}), 404
 
-def generate_default_short_url():
-    # Generate a 7-character default short URL
+def generate_default_short_url    # Generate a 7-character default short URL
     short_url = ''.join(random.choices(string.ascii_letters + string.digits, k=7))
     return short_url
 
