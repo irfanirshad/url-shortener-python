@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  zookeeper:
+    image: bitnami/zookeeper:latest
+    container_name: zookeeper
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+    ports:
+      - "2181:2181"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M   # Tighten Zookeeper memory usage
+        reservations:
+          memory: 256M
+
+  kafka:
+    image: bitnami/kafka:latest
+    container_name: kafka
+    environment:
+      - KAFKA_BROKER_ID=1
+      - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_HEAP_OPTS="-Xmx512M -Xms512M"  # Set Kafka heap size to 512MB
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M   # Tighten Kafka memory usage
+        reservations:
+          memory: 512M

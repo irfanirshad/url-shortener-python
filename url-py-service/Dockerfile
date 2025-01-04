@@ -1,18 +1,44 @@
-# Use Python Slim as Base Image
+# # Use a slim Python 3.9 image
+# FROM python:3.9-slim
+
+# # Set Work Directory
+# WORKDIR /app
+
+# # Install Dependencies
+# COPY requirements.txt .
+# RUN pip install --no-cache-dir -r requirements.txt
+
+# # Copy App Code
+# COPY . .
+
+# # Expose the Port for the Application
+# EXPOSE 5000
+
+# # Command to Run the App with Gunicorn
+# CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app.main:app"]
+
+
+# Use a lightweight Python image
 FROM python:3.9-slim
 
-# Set Work Directory
+# Set the working directory
 WORKDIR /app
 
-# Install Dependencies
+# Install system dependencies for psycopg2 and other requirements
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy App Code
+# Copy application files
 COPY . .
 
-# Expose Port
+# Expose port for the app
 EXPOSE 5000
 
-# Command to Run the App
-CMD ["python", "app.py"]
+# Use Gunicorn for production server
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]

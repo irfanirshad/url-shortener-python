@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  ui-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ui-service
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.ui.loadbalancer.server.port=4173"
+      - "traefik.http.routers.ui.rule=Host(`bigshort.one`) || Host(`www.bigshort.one`)"
+      - "traefik.http.routers.ui.entrypoints=web"
+      - "traefik.http.routers.ui-secure.rule=Host(`bigshort.one`) || Host(`www.bigshort.one`)"
+      - "traefik.http.routers.ui-secure.entrypoints=websecure"
+      - "traefik.http.routers.ui-secure.tls.certresolver=myresolver"
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4173"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - proxy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"  # Limit to 25% of a CPU core
+          memory: 256M   # Set memory limit to 256MB for the UI service
+        reservations:
+          memory: 256M   # Reservation of 256MB memory for UI
+
+networks:
+  proxy:
+    external: true

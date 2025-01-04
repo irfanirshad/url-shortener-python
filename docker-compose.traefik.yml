@@ -1,0 +1,102 @@
+version: '3.8'
+
+# Contains Traefik, Prometheus & grafana
+services:
+  traefik:
+    image: traefik:v3.1
+    container_name: traefik
+    ports:
+      - 80:80
+      - 8080:8080    # HTTP port
+      - 443:443  # HTTPS port
+    networks:
+      - proxy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - letsencrypt:/letsencrypt
+    command:
+      - "--api.dashboard=true"
+      - "--log.level=INFO"
+      - "--accesslog=true"
+      - "--providers.docker.network=proxy"
+      - "--providers.docker.exposedByDefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entryPoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.websecure.http.tls.certresolver=myresolver"
+      - "--certificatesresolvers.myresolver.acme.email=irfanirshad003@gmail.com"
+      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+
+      # Enable metrics (for Prometheus)
+      - "--metrics.prometheus=true"
+      - "--metrics.prometheus.entryPoint=web"
+      - "--metrics.prometheus.addEntryPointsLabels=true"
+      - "--metrics.prometheus.addServicesLabels=true"
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mydashboard.rule=Host(`traefik.bigshort.one`)"  # Change this line
+      - "traefik.http.routers.mydashboard.service=api@internal"
+      - "traefik.http.routers.mydashboard.entrypoints=websecure"  # Add this line
+        #- "traefik.http.routers.mydashboard.middlewares=myauth"
+        #- "traefik.http.middlewares.myauth.basicauth.users=test:$apr1$d97MQ/MT$NPtMKHvRnPozV5RNsg.sX1"
+
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.25"
+        reservations:
+          memory: 512M
+
+    prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+        #ports:
+      #  - "9090:9090"
+    networks:
+      - proxy
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"  # Limit to 25% of a CPU core
+          memory: 128M   # Tighten Prometheus memory usage
+        reservations:
+          memory: 128M   # Reservation of 128MB memory
+
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin  # Set Grafana admin password
+        #ports:
+      #      - "3000:3000"  # Grafana Dashboard
+    networks:
+      - proxy
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+        reservations:
+          memory: 128M
+
+networks:
+  proxy:
+    name: proxy
+
+# networks:
+#  proxy:
+#    driver: bridge
+
+volumes:
+  letsencrypt:
+    name: letsencrypt
