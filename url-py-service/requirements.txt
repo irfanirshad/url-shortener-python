@@ -4,3 +4,7 @@ redis
 gevent
 psycopg2-binary
 gunicorn
+# kafka
+# kafka-python
+dataclass_wizard
+confluent-kafka

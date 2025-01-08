@@ -1,141 +1,159 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-import redis
-import psycopg2
 import os
-import logging
-from gevent import monkey
-from gevent.pywsgi import WSGIServer
+import redis
+import json
+import uuid
+from flask import Flask, request, g, jsonify
+from threading import Thread
+# from kafka import KafkaProducer
+from time import sleep
+from dataclasses import dataclass, field
+from dataclass_wizard import JSONSerializable
+from typing import Optional
+from datetime import datetime
+from confluent_kafka import Producer
 
-# Apply monkey patching for gevent
-monkey.patch_all()
-
-# Flask App Initialization
+# Configure Flask
 app = Flask(__name__)
-CORS(app)
 
-# Logger Configuration
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+# Redis Clients
+redis_client_pre_gen = redis.StrictRedis(host='redis', port=6379, db=0, decode_responses=True)  # Redis-Pre-Gen (1.5 GB)
+redis_client_cache = redis.StrictRedis(host='redis', port=6379, db=1, decode_responses=True)  # Redis-Cache (1 GB)
 
-# Environment Variables for Redis and PostgreSQL
-REDIS_1_HOST = os.getenv('REDIS1_HOST', 'redis1')
-REDIS_2_HOST = os.getenv('REDIS2_HOST', 'redis2')
-REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
-POSTGRES_HOST = os.getenv('POSTGRES_HOST', 'postgres')
-POSTGRES_DB = os.getenv('POSTGRES_DB', 'url_db')
-POSTGRES_USER = os.getenv('POSTGRES_USER', 'postgres')
-POSTGRES_PASSWORD = os.getenv('POSTGRES_PASSWORD', 'password')
-POSTGRES_PORT = int(os.getenv('POSTGRES_PORT', 5432))
 
-# Redis Connections
-redis_1 = redis.Redis(host=REDIS_1_HOST, port=REDIS_PORT, db=1)
-redis_2 = redis.Redis(host=REDIS_2_HOST, port=REDIS_PORT, db=2)
+KAFKA_BROKER = 'kafka:9092'  # Replace with your Kafka broker address
+KAFKA_TOPIC = 'url_shortening_topic'  # Replace with your Kafka topic
 
-# PostgreSQL Connection
-def get_postgres_connection():
-    return psycopg2.connect(
-        host=POSTGRES_HOST,
-        database=POSTGRES_DB,
-        user=POSTGRES_USER,
-        password=POSTGRES_PASSWORD,
-        port=POSTGRES_PORT
+# Initialize Kafka Producer
+producer = Producer({'bootstrap.servers': KAFKA_BROKER})
+
+
+# Kafka producer
+# producer = KafkaProducer(bootstrap_servers=os.getenv('KAFKA_BROKER'),
+#                           value_serializer=lambda v: json.dumps(v).encode('utf-8'))
+
+# Kafka Topic
+# KAFKA_TOPIC = os.getenv('KAFKA_TOPIC', 'url-shortening')
+
+
+@dataclass
+class RequestMetadata:
+    id: str = uuid.uuid4().hex  # Generating an ID for custom URLs
+    user_agent: str = ''
+    ip_address: str = ''
+    referrer: str = ''
+    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+
+# Middleware to set request metadata before each request
+@app.before_request
+def set_request_metadata():
+    forwarded_for = request.headers.get('X-Forwarded-For', '')
+    g.request_metadata = RequestMetadata(
+        user_agent=request.headers.get('User-Agent', ''),
+        ip_address=forwarded_for.split(',')[0].strip() if forwarded_for else request.remote_addr,
+        referrer=request.headers.get('Referer', '')
     )
 
-# Routes
-@app.route('/shorten', methods=['POST'])
+@dataclass
+class URLData(JSONSerializable):
+    original_url: str 
+    id: str = uuid.uuid4().hex  # Generating an ID for custom URLs
+    display: bool = False
+    clicks: int = 0
+    custom_url: bool = False
+    timestamp: str = datetime.utcnow().isoformat()  # ISO format timestamp
+    user_agent: Optional[str] = None  # Capture the user agent string
+    ip_address: Optional[str] = None  # Capture the IP address of the request
+    referrer: Optional[str] = None  # Capture the referrer URL
+    device_info: Optional[str] = None  # Device info extracted from headers or other methods
+
+# Endpoint for URL shortening
+@app.route('/api/shorten', methods=['POST'])
 def shorten_url():
+    # user_details = request.headers
+    print("ENTERED !!!!!!!!!!!!!!!!")
     data = request.json
-    original_url = data.get('original_url')
-    custom_url = data.get('custom_url')
+    # url_data: URLData = URLData.from_dict(data,[
+    #     "user_agent": g.request_metadata.user_agent,
+    #     "ip_address": g.request_metadata.ip_address,
+    #     "referrer": g.request_metadata.referrer
+    #    ]   )
+    url_data = URLData(
+    original_url=data.get('original_url'),
+    display=data.get('display', False),
+    user_agent=g.request_metadata.user_agent,
+    ip_address=g.request_metadata.ip_address,
+    referrer=g.request_metadata.referrer,
+    timestamp=datetime.utcnow().isoformat(),
+    device_info=data.get('device_info', '')
+)
+    if not url_data:
+        return jsonify({"success": False, "message": "Invalid URL data"}), 400
 
+    
+    original_url = url_data.original_url
     if not original_url:
-        return jsonify({'error': 'Original URL is required.'}), 400
+        return jsonify({"success": False, "message": "original_url is required"}), 400
 
-    # Custom URL Logic
-    if custom_url:
-        if len(custom_url) < 8 or len(custom_url) > 16:
-            return jsonify({'error': 'Custom URLs must be between 8 and 16 characters long.'}), 400
-        if redis_1.exists(custom_url) or redis_2.exists(custom_url):
-            return jsonify({'error': 'Custom URL already exists.'}), 409
+    # Custom URL validation (minimum 8 characters)
+    if url_data.custom_url:
+        if len(original_url) < 8:
+            return jsonify({"success": False, "message": "Custom URLs must be at least 8 characters long."}), 400
 
-        # Store custom URL in DB and cache in Redis-1
-        save_url_to_db(original_url, custom_url, True)
-        redis_1.set(custom_url, original_url)
-        logger.info(f"Custom URL created: {custom_url} -> {original_url}")
-        return jsonify({'short_url': custom_url}), 201
+    # Get a pre-generated short URL from Redis-Pre-Gen (Redis-1)
+    short_url = redis_client_pre_gen.spop('available_short_urls')
 
-    # Default URL Logic (7 chars)
-    short_url = generate_default_short_url()
     if not short_url:
-        return jsonify({'error': 'No pre-generated URLs available.'}), 503
-    redis_2.delete(short_url)  # Evict from Redis-2 after use
-    redis_1.set(short_url, original_url)  # Cache in Redis-1
-    save_url_to_db(original_url, short_url, False)
-    logger.info(f"Pre-generated URL used: {short_url} -> {original_url}")
-    return jsonify({'short_url': short_url}), 201
+        return jsonify({"success": False, "message": "No available short URLs left in the pool."}), 500
 
-@app.route('/<short_url>', methods=['GET'])
+    # Store the short URL in Redis Cache (Redis-2)
+    redis_client_cache.set(short_url, original_url, keepttl=False)
+
+
+    def background_task(url_data: URLData):
+        # producer.send(KAFKA_TOPIC, {
+        #     'short_url': short_url,
+        #     'original_url': original_url,
+        #     'wish_to_be_displayed_on_dashboard': url_data.display,
+        #     'clicks': url_data.clicks,
+        #     'id': url_data.id,
+        #     'timestamp': url_data.timestamp,
+        #     'user_agent': url_data.user_agent,
+        #     'ip_address': url_data.ip_address,
+        #     'referrer': url_data.referrer,
+        #     'device_info': url_data.device_info
+        # })
+        # producer.produce(KAFKA_TOPIC, url_data_json, callback=delivery_callback)
+
+        producer.produce(KAFKA_TOPIC, url_data.to_dict())
+        producer.flush()  # Ensure the message is delivered
+
+    # Run the background task in a separate thread
+    Thread(target=background_task, args=(url_data)).start()
+
+    # Return the short URL to the user immediately . Ideally before DB save 
+    response = {"success": True, "short_url": short_url}
+    
+    return jsonify(response), 200
+
+
+# Endpoint to resolve short URLs
+@app.route('/api/<short_url>', methods=['GET'])
 def resolve_url(short_url):
-    # Check in Redis-1
-    original_url = redis_1.get(short_url)
+    # First, try to get the original URL from the resolution cache (Redis-Cache)
+    original_url = redis_client_cache.get(short_url)
+    
     if original_url:
-        update_clicks_in_db(short_url)
-        return jsonify({'original_url': original_url.decode()}), 200
-
-    # Check in PostgreSQL
-    try:
-        with get_postgres_connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT original_url FROM urls WHERE short_url = %s", (short_url,))
-                result = cursor.fetchone()
-                if result:
-                    original_url = result[0]
-                    redis_1.set(short_url, original_url)  # Cache in Redis-1
-                    update_clicks_in_db(short_url)
-                    return jsonify({'original_url': original_url}), 200
-    except Exception as e:
-        logger.error(f"Error querying PostgreSQL: {e}")
-        return jsonify({'error': 'Internal server error.'}), 500
-
-    logger.warning(f"URL not found: {short_url}")
-    return jsonify({'error': 'URL not found.'}), 404
-
-def generate_default_short_url    # Generate a 7-character default short URL
-    short_url = ''.join(random.choices(string.ascii_letters + string.digits, k=7))
-    return short_url
-
-def save_url_to_db(original_url, short_url, is_custom):
-    try:
-        with get_postgres_connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("""
-                    INSERT INTO urls (short_url, original_url, is_custom) 
-                    VALUES (%s, %s, %s)
-                """, (short_url, original_url, is_custom))
-                conn.commit()
-    except Exception as e:
-        logger.error(f"Error saving URL to DB: {e}")
-
-def update_clicks_in_db(short_url):
-    try:
-        with get_postgres_connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT id FROM urls WHERE short_url = %s", (short_url,))
-                result = cursor.fetchone()
-                if result:
-                    url_id = result[0]
-                    cursor.execute("SELECT clicks FROM url_analytics WHERE url_id = %s", (url_id,))
-                    clicks = cursor.fetchone()
-                    if clicks:
-                        cursor.execute("UPDATE url_analytics SET clicks = clicks + 1, last_clicked_at = CURRENT_TIMESTAMP WHERE url_id = %s", (url_id,))
-                    else:
-                        cursor.execute("INSERT INTO url_analytics (url_id, clicks) VALUES (%s, 1)", (url_id,))
-                    conn.commit()
-    except Exception as e:
-        logger.error(f"Error updating click count in DB: {e}")
+        return jsonify({"success": True, "original_url": original_url}), 200
+    
+    # If not found in the resolution cache, check Pre-Gen Redis
+    original_url = redis_client_pre_gen.get(short_url)
+    
+    if original_url:
+        return jsonify({"success": True, "original_url": original_url}), 200
+    
+    # If not found, return an error response
+    return jsonify({"success": False, "error": "URL not found"}), 404
 
 if __name__ == '__main__':
-    http_server = WSGIServer(('0.0.0.0', 5000), app)
-    logger.info("Starting Gevent WSGI Server on port 5000...")
-    http_server.serve_forever()
+    print("KAFKA_BROKER:", os.getenv('KAFKA_BROKER'))
+    app.run(host='0.0.0.0', port=5000, threaded=True)

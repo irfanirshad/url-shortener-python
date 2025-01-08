@@ -17,6 +17,9 @@
 # # Command to Run the App with Gunicorn
 # CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app.main:app"]
 
+# ==================================================xxxxxxxxxxxxxxxxxxxxxxxxxx=========================
+# ==================================================xxxxxxxxxxxxxxxxxxxxxxxxxx=========================
+
 
 # Use a lightweight Python image
 FROM python:3.9-slim
@@ -42,3 +45,8 @@ EXPOSE 5000
 
 # Use Gunicorn for production server
 CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]
+
+
+
+# ==================================================xxxxxxxxxxxxxxxxxxxxxxxxxx=========================
+# ==================================================xxxxxxxxxxxxxxxxxxxxxxxxxx=========================

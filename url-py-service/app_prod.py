@@ -92,19 +92,18 @@ def shorten_url():
 
 
     def background_task(url_data: URLData):
-        # Produce the message to Kafka for database storage
-        producer.send(KAFKA_TOPIC, {
-            'short_url': short_url,
-            'original_url': original_url,
-            'wish_to_be_displayed_on_dashboard': url_data.display,
-            'clicks': url_data.clicks,
-            'id': url_data.id,
-            'timestamp': url_data.timestamp,
-            'user_agent': url_data.user_agent,
-            'ip_address': url_data.ip_address,
-            'referrer': url_data.referrer,
-            'device_info': url_data.device_info
-        })
+        # producer.send(KAFKA_TOPIC, {
+        #     'short_url': short_url,
+        #     'original_url': original_url,
+        #     'wish_to_be_displayed_on_dashboard': url_data.display,
+        #     'clicks': url_data.clicks,
+        #     'id': url_data.id,
+        #     'timestamp': url_data.timestamp,
+        #     'user_agent': url_data.user_agent,
+        #     'ip_address': url_data.ip_address,
+        #     'referrer': url_data.referrer,
+        #     'device_info': url_data.device_info
+        # })
         producer.send(KAFKA_TOPIC, url_data.to_dict())
         producer.flush()  # Ensure the message is delivered
 
