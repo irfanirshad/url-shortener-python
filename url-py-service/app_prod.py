@@ -4,26 +4,33 @@ import json
 import uuid
 from flask import Flask, request, g, jsonify
 from threading import Thread
-from kafka import KafkaProducer
+# from kafka import KafkaProducer
 from time import sleep
 from dataclasses import dataclass, field
 from dataclass_wizard import JSONSerializable
 from typing import Optional
 from datetime import datetime
+from confluent_kafka import Producer
+
+
+# Environment variables
+KAFKA_TOPIC = os.getenv('KAFKA_TOPIC', 'url-shortening')
+REDIS_URL = os.getenv('REDIS_URL')
+REDIS_PC = os.getenv('REDIS_PC')
+KAFKA_BROKER = os.getenv('KAFKA_BROKER')
 
 # Configure Flask
 app = Flask(__name__)
 
 # Redis Clients
-redis_client_pre_gen = redis.StrictRedis(host='redis', port=6379, db=0, decode_responses=True)  # Redis-Pre-Gen (1.5 GB)
-redis_client_cache = redis.StrictRedis(host='redis', port=6379, db=1, decode_responses=True)  # Redis-Cache (1 GB)
+redis_client_pre_gen = redis.StrictRedis(host=REDIS_URL, port=6380, db=0, decode_responses=True)  # Redis-Pre-Gen (1.5 GB)
+redis_client_cache = redis.StrictRedis(host=REDIS_PC, port=6379, db=1, decode_responses=True)  # Redis-Cache (1 GB)
 
-# Kafka producer
-producer = KafkaProducer(bootstrap_servers=os.getenv('KAFKA_BROKER'),
-                          value_serializer=lambda v: json.dumps(v).encode('utf-8'))
+# # Kafka producer
+# producer = KafkaProducer(bootstrap_servers=KAFKA_BROKER,value_serializer=lambda v: json.dumps(v).encode('utf-8'))
 
 # Kafka Topic
-KAFKA_TOPIC = os.getenv('KAFKA_TOPIC', 'url-shortening')
+producer = Producer({'bootstrap.servers': KAFKA_BROKER})
 
 
 @dataclass
@@ -82,7 +89,10 @@ def shorten_url():
             return jsonify({"success": False, "message": "Custom URLs must be at least 8 characters long."}), 400
 
     # Get a pre-generated short URL from Redis-Pre-Gen (Redis-1)
-    short_url = redis_client_pre_gen.spop('available_short_urls')
+    try:
+        short_url = redis_client_pre_gen.spop('short_urls')
+    except redis.RedisError as e:
+        return jsonify({"success": False, "message": f"Redis error: {str(e)}"}), 500
 
     if not short_url:
         return jsonify({"success": False, "message": "No available short URLs left in the pool."}), 500
@@ -92,19 +102,7 @@ def shorten_url():
 
 
     def background_task(url_data: URLData):
-        # producer.send(KAFKA_TOPIC, {
-        #     'short_url': short_url,
-        #     'original_url': original_url,
-        #     'wish_to_be_displayed_on_dashboard': url_data.display,
-        #     'clicks': url_data.clicks,
-        #     'id': url_data.id,
-        #     'timestamp': url_data.timestamp,
-        #     'user_agent': url_data.user_agent,
-        #     'ip_address': url_data.ip_address,
-        #     'referrer': url_data.referrer,
-        #     'device_info': url_data.device_info
-        # })
-        producer.send(KAFKA_TOPIC, url_data.to_dict())
+        producer.produce(KAFKA_TOPIC, url_data.to_dict())
         producer.flush()  # Ensure the message is delivered
 
     # Run the background task in a separate thread

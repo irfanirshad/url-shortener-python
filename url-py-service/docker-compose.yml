@@ -6,34 +6,29 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: flask-url-shortener
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=Host(`api.bigshort.one`)"
+      - "traefik.http.routers.api.entrypoints=web"
+      - "traefik.http.routers.api-secure.rule=Host(`api.bigshort.one`)"
+      - "traefik.http.routers.api-secure.entrypoints=websecure"
+      - "traefik.http.routers.api-secure.tls.certresolver=myresolver"
+      - "traefik.http.services.api.loadbalancer.server.port=5000"
     ports:
       - "5000:5000"
     environment:
       FLASK_ENV: production
-      KAFKA_BROKER: kafka:9092
+      # KAFKA_BROKER: kafka:9092
+      KAFKA_BROKER: host-gateway:9092
       KAFKA_TOPIC: url_shortening_topic
-    depends_on:
-      - redis1
-      - redis2
+      REDIS_URL: redis-urls
+      REDIS_PC: redis-pc
     networks:
-      - kafka_network
-
-  redis1:
-    image: redis:6
-    container_name: redis-primary
-    ports:
-      - "6379:6379"
-    networks:
-      - kafka_network
-
-  redis2:
-    image: redis:6
-    container_name: redis-secondary
-    ports:
-      - "6380:6379"
-    networks:
-      - kafka_network
+      - proxy
+    extra_hosts:  
+      - "redis-urls:host-gateway"
+      - "redis-pc:host-gateway"
 
 networks:
-  kafka_network:
+  proxy:
     external: true
