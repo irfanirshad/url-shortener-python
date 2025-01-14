@@ -27,14 +27,6 @@ KAFKA_TOPIC = 'url_shortening_topic'  # Replace with your Kafka topic
 producer = Producer({'bootstrap.servers': KAFKA_BROKER})
 
 
-# Kafka producer
-# producer = KafkaProducer(bootstrap_servers=os.getenv('KAFKA_BROKER'),
-#                           value_serializer=lambda v: json.dumps(v).encode('utf-8'))
-
-# Kafka Topic
-# KAFKA_TOPIC = os.getenv('KAFKA_TOPIC', 'url-shortening')
-
-
 @dataclass
 class RequestMetadata:
     id: str = uuid.uuid4().hex  # Generating an ID for custom URLs
@@ -77,7 +69,7 @@ def shorten_url():
     #     "ip_address": g.request_metadata.ip_address,
     #     "referrer": g.request_metadata.referrer
     #    ]   )
-    url_data = URLData(
+    url_data = URLData.from_dict(
     original_url=data.get('original_url'),
     display=data.get('display', False),
     user_agent=g.request_metadata.user_agent,

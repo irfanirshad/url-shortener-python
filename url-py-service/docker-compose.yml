@@ -18,17 +18,18 @@ services:
       - "5000:5000"
     environment:
       FLASK_ENV: production
-      # KAFKA_BROKER: kafka:9092
-      KAFKA_BROKER: host-gateway:9092
+      KAFKA_BROKER: kafka-1:9092
       KAFKA_TOPIC: url_shortening_topic
       REDIS_URL: redis-urls
       REDIS_PC: redis-pc
+      DB_HOST: postgres-1
     networks:
       - proxy
     extra_hosts:  
       - "redis-urls:host-gateway"
       - "redis-pc:host-gateway"
-
+      - kafka-1:host-gateway
+      - postgres-1:host-gateway
 networks:
   proxy:
     external: true

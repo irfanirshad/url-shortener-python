@@ -1,20 +1,39 @@
--- Table to store URL metadata
-CREATE TABLE url_metadata (
-    id SERIAL PRIMARY KEY,
-    short_url VARCHAR(6) NOT NULL UNIQUE,
-    long_url TEXT NOT NULL,
-    click_count INT DEFAULT 0,
-    display_on_dashboard BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- schema-init.sql
+
+-- Ensure the database exists (optional if using POSTGRES_DB)
+-- CREATE DATABASE yourdbname;
+
+-- Connect to the new database
+\c yourdbname;
+
+-- Run your schema setup
+CREATE TABLE urls (
+    id UUID PRIMARY KEY,
+    original_url TEXT NOT NULL,
+    short_code VARCHAR(10) UNIQUE NOT NULL,
+    display BOOLEAN DEFAULT FALSE,
+    clicks INTEGER DEFAULT 0,
+    custom_url BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    sec_ch_ua_platform TEXT,
+    sec_ch_ua TEXT,
+    sec_ch_ua_mobile TEXT
 );
 
--- Table to store click logs for URLs
-CREATE TABLE click_logs (
+CREATE TABLE url_clicks (
     id SERIAL PRIMARY KEY,
-    short_url VARCHAR(6) NOT NULL,
-    clicked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (short_url) REFERENCES url_metadata (short_url)
+    url_id UUID REFERENCES urls(id) ON DELETE CASCADE,
+    user_agent TEXT,
+    ip_address INET,
+    referrer TEXT,
+    device_info TEXT,
+    sec_ch_ua_platform TEXT,
+    sec_ch_ua TEXT,
+    sec_ch_ua_mobile TEXT,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Index for the most recent URLs (optional)
-CREATE INDEX idx_recent_urls ON url_metadata (created_at DESC);
+-- Indexes for performance
+CREATE INDEX idx_short_code ON urls(short_code);
+CREATE INDEX idx_url_id ON url_clicks(url_id);
+CREATE INDEX idx_created_at ON urls(created_at);

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { RefreshButton } from './RefreshButton';
 
@@ -9,30 +9,40 @@ interface URLEntry {
 }
 
 export function Dashboard() {
-  const [urls, setUrls] = useState<URLEntry[]>([
-    {
-      originalUrl: 'https://example.com/very/long/url/that/needs/to/be/shortened',
-      shortUrl: 'https://short.url/abc123',
-      clicks: 42
-    }
-  ]);
+  const [urls, setUrls] = useState<URLEntry[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const fetchUrls = async () => {
+    try {
+      const response = await fetch('https://api.bigshort.one/api/urls');
+      const data = await response.json();
+      
+      // Map the response to fit your component's structure
+      const urlData = data.urls.map((entry: any) => ({
+        originalUrl: entry.original_url,
+        shortUrl: entry.short_code,
+        clicks: entry.clicks,
+      }));
+
+      setUrls(urlData); // Update the state with the new URL data
+    } catch (error) {
+      console.error('Failed to fetch URLs:', error);
+    }
+  };
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      // Update URLs here with fresh data
-    } catch (error) {
-      console.error('Failed to refresh URLs:', error);
-    } finally {
-      setIsRefreshing(false);
-    }
+    await fetchUrls(); // Fetch the updated URLs
+    setIsRefreshing(false);
   };
 
   const truncateUrl = (url: string, maxLength: number = 30) => {
     return url.length > maxLength ? `${url.substring(0, maxLength)}...` : url;
   };
+
+  useEffect(() => {
+    fetchUrls(); // Initial fetch when the component mounts
+  }, []);
 
   return (
     <div className="glass-card rounded-2xl overflow-hidden">
@@ -59,15 +69,15 @@ export function Dashboard() {
             {urls.map((entry, index) => (
               <tr key={index} className="hover:bg-white/5 transition-colors">
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300 hover:text-custom-white">
-                  {truncateUrl(entry.originalUrl)}
+                  {truncateUrl(entry.originalUrl)} {/* Truncate long URLs */}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm">
                   <a
-                    href={entry.shortUrl}
-                    target="_blank"
+                  href={`https://${entry.shortUrl}`} 
+                  target="_blank"
                     rel="noopener noreferrer"
                     className="text-custom-light-gray glow-text hover:text-custom-white flex items-center gap-1"
-                    >
+                  >
                     {entry.shortUrl}
                     <ExternalLink size={14} />
                   </a>
