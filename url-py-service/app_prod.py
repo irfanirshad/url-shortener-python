@@ -1,7 +1,7 @@
 import os
 import redis
 import uuid
-from flask import Flask, request, g, jsonify
+from flask import Flask, request, g, jsonify, redirect
 from threading import Thread
 from time import sleep
 from dataclasses import dataclass, field
@@ -16,7 +16,13 @@ from urllib.parse import urlparse
 import psycopg2
 from psycopg2 import sql
 import html
+import re
+from redis.exceptions import RedisError
 
+
+
+
+from db.pg_connector import get_from_database
 from validations import is_valid_url
 
 # LOGGING
@@ -34,11 +40,32 @@ DB_NAME="yourdbname"
 DB_USER="yourusername"
 DB_PASSWORD="yourpassword"
 DB_PORT=5432
+URL_LENGTH_MAX = 8
+
 
 # Configure Flask
 app = Flask(__name__)
 
-# CORS
+
+
+# CORS(app, resources={
+#     r"/api/v1/*": {
+#         "origins": ["https://www.bigshort.one", "https://bigshort.one", "http://localhost:4173"],
+#         "methods": ["GET", "POST", "OPTIONS"],
+#         "allow_headers": ["Content-Type", "Accept", "Accept-Language", 
+#                          "Origin", "Referer", "Sec-Ch-Ua", "Sec-Ch-Ua-Mobile", 
+#                          "Sec-Ch-Ua-Platform", "User-Agent"],
+#         # "supports_credentials": False
+#     },
+#     r"/<short_url>": {
+#         "origins": "*",  # Temporary for testing
+#         "methods": ["GET", "OPTIONS"],
+#         "allow_headers": ["Content-Type", "Authorization"],
+#         "supports_credentials": False
+#     }
+# })
+
+
 CORS(app, resources={
     r"/api/*": {
         "origins": ["https://www.bigshort.one", "https://bigshort.one", "http://localhost:4173"],
@@ -47,7 +74,6 @@ CORS(app, resources={
         "supports_credentials": True
     }
 })
-
 
 # Redis Clients
 redis_client_pre_gen = redis.StrictRedis(host=REDIS_URL, port=6380, db=0, decode_responses=True)  # Redis-Pre-Gen (1.5 GB)
@@ -84,8 +110,8 @@ class RequestMetadata:
 # Middleware to set request metadata before each request
 @app.before_request
 def set_request_metadata():
-    if not request.is_json:
-        return jsonify({"error": "Content-Type must be application/json"}), 415
+    # if not request.is_json:
+    #     return jsonify({"error": "Content-Type must be application/json"}), 415
     forwarded_for = request.headers.get('X-Forwarded-For', '')
     g.request_metadata = RequestMetadata(
         user_agent=request.headers.get('User-Agent', ''),
@@ -117,7 +143,7 @@ class URLData(JSONSerializable):
 
 
 # Endpoint for URL shortening
-@app.route('/v1/shorten', methods=['POST'])
+@app.route('/api/v1/shorten', methods=['POST'])
 def shorten_url():
     data = request.json
     url_data: URLData = URLData.from_dict(data)
@@ -144,12 +170,9 @@ def shorten_url():
         if len(original_url) < 8:
             return jsonify({"success": False, "message": "Custom URLs must be at least 8 characters long."}), 400
 
-    try:
-        redis_url = redis_client_pre_gen.lpop('short_urls')
-        short_url =  f"www.bigshort.one/{redis_url}"
-    except redis.RedisError as e:
-        logging.error(f"Redis error: {str(e)}")
-        return jsonify({"success": False, "message": f"Redis error: {str(e)}"}), 500
+    redis_url = redis_client_pre_gen.lpop('short_urls')
+    short_url =  f"www.bigshort.one/{redis_url}"
+    # return jsonify({"success": False, "message": f"Redis error: {str(e)}"}), 500
 
     if not redis_url:
         return jsonify({"success": False, "message": "No available short URLs left in the pool."}), 500 # TODO: Later Handle
@@ -205,38 +228,51 @@ def shorten_url():
     return jsonify(response), 200
 
 
-@app.route('/<short_url>', methods=['GET'])
+@app.route('/api/<short_url>', methods=['GET'])
 def resolve_url(short_url):
     # First, split out the short_url from the bigshort.one/<short_url>
-    redis_url_check = short_url.split("/")[-1]
+    short_url = short_url.split("/")[-1]
+
+    # short_url = short_url.strip()[:50]  # Limit length
+    if not re.match(r'^[a-zA-Z0-9-_]+$', short_url) or len(short_url) > URL_LENGTH_MAX:
+        return jsonify({"success": False, "error": "Invalid URL format"}), 400
+
     
     # Second, try to get the original URL from the resolution cache (Redis-Cache)
-    if redis_client_cache.exists(redis_url_check):
-        original_url = redis_client_cache.get(redis_url_check)
+    if redis_client_cache.exists(short_url):
+        original_url = redis_client_cache.get(short_url)
         logging.info(f"Value found: {original_url}", original_url, logging.INFO)
     else:
         logging.info("Key not found!")
-    original_url = redis_client_cache.get(redis_url_check)
+    original_url = redis_client_cache.get(short_url)
     
-    logging.info(f"URL retrived ? short url ==> {redis_url_check} and original url ==> {original_url}")
+    logging.info(f"URL retrived ? short url ==> {short_url} and original url ==> {original_url}")
     
     if original_url:
         return jsonify({"success": True, "original_url": original_url}), 200
     
     # If not found in the redis cache, check the DB 
-    # insert DB code here
-    pass
-    
+    original_url = get_from_database(short_url)
+    logging.info(f"We found this !! ==> {original_url}")
     if original_url:
-        # now insert a redirect Flask function this
-        return jsonify({"success": True, "original_url": original_url}), 200
+        # Update cache with new TTL
+        try:
+            redis_client_cache.setex(
+                short_url,
+                3600,  # 1 hour TTL
+                original_url
+            )
+        except RedisError as e:
+            logging.error(f"Cache update failed: {str(e)}")
+        logging.info("Redirecting !!!!!!!!!!!! to url {}")
+        return redirect(original_url, code=302)
     
     # If not found, return an error response
     return jsonify({"success": False, "error": "URL not found"}), 404
 
 
 
-@app.route('/api/urls', methods=["GET"])
+@app.route('/api/v1/urls', methods=['GET'])
 def fetch_url_list():
     # fetch the last 1000 urls. No pagination
     # Will add more functionality like sort based on clicks 
@@ -270,7 +306,7 @@ def fetch_url_list():
             }
             urls.append(url_data)
         
-        logging.info(f"URLS fetched from DB => {urls}")
+        # logging.info(f"URLS fetched from DB => {urls}")
         cursor.close()
         conn.close()
         

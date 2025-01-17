@@ -4,7 +4,7 @@ import re
 from typing import Optional
 import validators
 from bleach import clean
-import html
+import logging
 
 
 def is_valid_url(url: str) -> tuple[bool, Optional[str]]:
@@ -33,6 +33,7 @@ def is_valid_url(url: str) -> tuple[bool, Optional[str]]:
         # Block localhost and internal IP addresses
         hostname = parsed.hostname.lower()
         if hostname in ['localhost', '127.0.0.1'] or hostname.startswith('192.168.') or hostname.startswith('10.'):
+            
             return False, "Internal/localhost URLs are not allowed"
             
         # Block common shell script extensions

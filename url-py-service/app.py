@@ -11,9 +11,20 @@ from dataclass_wizard import JSONSerializable
 from typing import Optional
 from datetime import datetime
 from confluent_kafka import Producer
+from flask_cors import CORS
 
 # Configure Flask
 app = Flask(__name__)
+
+CORS(app, resources={
+    r"/api/*": {
+        "origins": ["https://www.bigshort.one", "https://bigshort.one", "http://localhost:4173"],
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"],
+        "supports_credentials": True
+    }
+})
+
 
 # Redis Clients
 redis_client_pre_gen = redis.StrictRedis(host='redis', port=6379, db=0, decode_responses=True)  # Redis-Pre-Gen (1.5 GB)
@@ -25,6 +36,7 @@ KAFKA_TOPIC = 'url_shortening_topic'  # Replace with your Kafka topic
 
 # Initialize Kafka Producer
 producer = Producer({'bootstrap.servers': KAFKA_BROKER})
+
 
 
 @dataclass
@@ -62,13 +74,7 @@ class URLData(JSONSerializable):
 @app.route('/api/shorten', methods=['POST'])
 def shorten_url():
     # user_details = request.headers
-    print("ENTERED !!!!!!!!!!!!!!!!")
     data = request.json
-    # url_data: URLData = URLData.from_dict(data,[
-    #     "user_agent": g.request_metadata.user_agent,
-    #     "ip_address": g.request_metadata.ip_address,
-    #     "referrer": g.request_metadata.referrer
-    #    ]   )
     url_data = URLData.from_dict(
     original_url=data.get('original_url'),
     display=data.get('display', False),
