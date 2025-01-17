@@ -6,3 +6,5 @@ psycopg2-binary
 gunicorn
 dataclass_wizard
 confluent-kafka
+validators
+bleach

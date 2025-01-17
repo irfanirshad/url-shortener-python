@@ -14,7 +14,7 @@ export function Dashboard() {
 
   const fetchUrls = async () => {
     try {
-      const response = await fetch('https://api.bigshort.one/api/urls');
+      const response = await fetch('https://api.bigshort.one/api/v1/urls');
       const data = await response.json();
       
       // Map the response to fit your component's structure

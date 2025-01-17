@@ -12,12 +12,16 @@ from confluent_kafka import Producer
 import json
 import logging
 from flask_cors import CORS
-
-logging.basicConfig(level=logging.DEBUG)
-logging.debug("Debug message")
-
+from urllib.parse import urlparse
 import psycopg2
 from psycopg2 import sql
+import html
+
+from validations import is_valid_url
+
+# LOGGING
+logging.basicConfig(level=logging.DEBUG)
+logging.debug("Debug message")
 
 
 # Environment variables
@@ -45,14 +49,12 @@ CORS(app, resources={
 })
 
 
-
 # Redis Clients
 redis_client_pre_gen = redis.StrictRedis(host=REDIS_URL, port=6380, db=0, decode_responses=True)  # Redis-Pre-Gen (1.5 GB)
-redis_client_cache = redis.StrictRedis(host=REDIS_PC, port=6379, db=1, decode_responses=True)  # Redis-Cache (1 GB)
+redis_client_cache = redis.StrictRedis(host=REDIS_PC, port=6379, db=0, decode_responses=True)  # Redis-Cache (1 GB)
 
 # Kafka Topic
 producer = Producer({'bootstrap.servers': KAFKA_BROKER})
-
 
 
 # Connect to the Postgres Database
@@ -82,6 +84,8 @@ class RequestMetadata:
 # Middleware to set request metadata before each request
 @app.before_request
 def set_request_metadata():
+    if not request.is_json:
+        return jsonify({"error": "Content-Type must be application/json"}), 415
     forwarded_for = request.headers.get('X-Forwarded-For', '')
     g.request_metadata = RequestMetadata(
         user_agent=request.headers.get('User-Agent', ''),
@@ -113,7 +117,7 @@ class URLData(JSONSerializable):
 
 
 # Endpoint for URL shortening
-@app.route('/api/v1/shorten', methods=['POST'])
+@app.route('/v1/shorten', methods=['POST'])
 def shorten_url():
     data = request.json
     url_data: URLData = URLData.from_dict(data)
@@ -130,6 +134,9 @@ def shorten_url():
     url_data.sec_ch_ua_mobile = g.request_metadata.sec_ch_ua_mobile
     
     original_url = url_data.url
+    is_valid, error_message = is_valid_url(original_url)
+    if not is_valid:
+            return jsonify({"success": False, "message": error_message}), 400
     if not original_url:
         return jsonify({"success": False, "message": "original_url is required"}), 400
 
@@ -138,16 +145,19 @@ def shorten_url():
             return jsonify({"success": False, "message": "Custom URLs must be at least 8 characters long."}), 400
 
     try:
-        short_url = redis_client_pre_gen.lpop('short_urls')
+        redis_url = redis_client_pre_gen.lpop('short_urls')
+        short_url =  f"www.bigshort.one/{redis_url}"
     except redis.RedisError as e:
         logging.error(f"Redis error: {str(e)}")
         return jsonify({"success": False, "message": f"Redis error: {str(e)}"}), 500
 
-    if not short_url:
-        return jsonify({"success": False, "message": "No available short URLs left in the pool."}), 500
+    if not redis_url:
+        return jsonify({"success": False, "message": "No available short URLs left in the pool."}), 500 # TODO: Later Handle
 
-    redis_client_cache.set(short_url, original_url, keepttl=False)
-    url_data.short_url = short_url
+    # redis_client_cache.set(redis_url, original_url, keepttl=False)
+    redis_client_cache.set(redis_url, html.escape(original_url), keepttl=False)
+
+    url_data.short_url = redis_url
 
     # def background_task(url_data_dict: dict):
     #     url_data_json = json.dumps(url_data_dict).encode('utf-8')
@@ -184,21 +194,31 @@ def shorten_url():
     
     url_data_dict = url_data.to_dict(skip_defaults=False)
     logging.info(f"URL INFO ==> {url_data_dict}")
+    save_to_db(url_data_dict)
     
-    
-    t = Thread(target=save_to_db, args=(url_data_dict,))
+    # t = Thread(target=save_to_db, args=(url_data_dict,))
     # t = Thread(target=background_task, args=(url_data_dict,))
-    t.start()
+    # t.start()
     
-    response = {"success": True, "shortUrl": f"www.bigshort.one/{short_url}"}
+    response = {"success": True, "shortUrl": short_url}
     
     return jsonify(response), 200
 
 
-@app.route('/api/<short_url>', methods=['GET'])
+@app.route('/<short_url>', methods=['GET'])
 def resolve_url(short_url):
-    # First, try to get the original URL from the resolution cache (Redis-Cache)
-    original_url = redis_client_cache.get(short_url)
+    # First, split out the short_url from the bigshort.one/<short_url>
+    redis_url_check = short_url.split("/")[-1]
+    
+    # Second, try to get the original URL from the resolution cache (Redis-Cache)
+    if redis_client_cache.exists(redis_url_check):
+        original_url = redis_client_cache.get(redis_url_check)
+        logging.info(f"Value found: {original_url}", original_url, logging.INFO)
+    else:
+        logging.info("Key not found!")
+    original_url = redis_client_cache.get(redis_url_check)
+    
+    logging.info(f"URL retrived ? short url ==> {redis_url_check} and original url ==> {original_url}")
     
     if original_url:
         return jsonify({"success": True, "original_url": original_url}), 200
@@ -208,6 +228,7 @@ def resolve_url(short_url):
     pass
     
     if original_url:
+        # now insert a redirect Flask function this
         return jsonify({"success": True, "original_url": original_url}), 200
     
     # If not found, return an error response
