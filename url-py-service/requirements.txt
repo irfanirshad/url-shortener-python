@@ -8,3 +8,4 @@ dataclass_wizard
 confluent-kafka
 validators
 bleach
+flask-socketio

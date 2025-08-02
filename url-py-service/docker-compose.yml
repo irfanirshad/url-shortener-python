@@ -8,26 +8,74 @@ services:
     container_name: flask-url-shortener
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.api.rule=Host(`api.bigshort.one`)"
-      - "traefik.http.routers.api.entrypoints=web"
-      - "traefik.http.routers.api-secure.rule=Host(`api.bigshort.one`)"
-      - "traefik.http.routers.api-secure.entrypoints=websecure"
-      - "traefik.http.routers.api-secure.tls.certresolver=myresolver"
-      - "traefik.http.services.api.loadbalancer.server.port=5000"
+
+      # Backend service (handles all other paths)
+      - "traefik.http.routers.backend.rule=(Host(`bigshort.one`) || Host(`www.bigshort.one`)) && PathPrefix(`/`)"
+      - "traefik.http.routers.backend.entrypoints=web"
+      - "traefik.http.routers.backend-secure.rule=(Host(`bigshort.one`) || Host(`www.bigshort.one`)) && PathPrefix(`/`)"
+      - "traefik.http.routers.backend-secure.entrypoints=websecure"
+      - "traefik.http.services.backend.loadbalancer.server.port=5000"
+      - "traefik.http.routers.backend-secure.tls.certresolver=myresolver"
+          
+      # - "traefik.enable=true"
+
+      # # API routing for api.bigshort.one
+      # - "traefik.http.routers.api.rule=Host(`api.bigshort.one`)"
+      # - "traefik.http.routers.api.entrypoints=web"
+      # - "traefik.http.routers.api.service=api"
+      # - "traefik.http.services.api.loadbalancer.server.port=5000"
+      # - "traefik.http.routers.api.priority=1"  # Higher priority
+
+      # - "traefik.http.routers.api-secure.rule=Host(`api.bigshort.one`)"
+      # - "traefik.http.routers.api-secure.entrypoints=websecure"
+      # - "traefik.http.routers.api-secure.tls.certresolver=myresolver"
+      # - "traefik.http.routers.api-secure.service=api"
+      # - "traefik.http.routers.api-secure.priority=1"  # Higher priority
+
+      # # Routing for bigshort.one/<short_url> (HTTP) with regex
+      # - "traefik.http.routers.short-url.rule=Host(`bigshort.one`) && PathPrefix(`/{any:.+}`)"
+      # - "traefik.http.routers.short-url.entrypoints=web"
+      # - "traefik.http.routers.short-url.service=short-url"
+      # - "traefik.http.services.short-url.loadbalancer.server.port=5000"
+      # - "traefik.http.routers.short-url.priority=1"  # Higher priority
+
+      # # Routing for bigshort.one/<short_url> (HTTPS) with regex
+      # - "traefik.http.routers.short-url-secure.rule=Host(`bigshort.one`) && PathPrefix(`/{any:.+}`)"
+      # - "traefik.http.routers.short-url-secure.entrypoints=websecure"
+      # - "traefik.http.routers.short-url-secure.tls.certresolver=myresolver"
+      # - "traefik.http.routers.short-url-secure.service=short-url"
+      # - "traefik.http.routers.short-url-secure.priority=1"  # Higher priority
+
+      # # Catch-all rule for bigshort.one (404 for unknown paths)
+      # - "traefik.http.routers.catch-all.rule=Host(`bigshort.one`)"
+      # - "traefik.http.routers.catch-all.entrypoints=web"
+      # - "traefik.http.routers.catch-all.service=short-url"
+      # - "traefik.http.routers.catch-all.priority=1"  # Higher priority
+
+      # - "traefik.http.routers.catch-all-secure.rule=Host(`bigshort.one`)"
+      # - "traefik.http.routers.catch-all-secure.entrypoints=websecure"
+      # - "traefik.http.routers.catch-all-secure.tls.certresolver=myresolver"
+      # - "traefik.http.routers.catch-all-secure.service=short-url"
+      # - "traefik.http.routers.catch-all-secure.priority=1"  # Higher priority
+
     ports:
       - "5000:5000"
     environment:
       FLASK_ENV: production
       KAFKA_BROKER: kafka-1:9092
       KAFKA_TOPIC: url_shortening_topic
-      REDIS_URL: redis-urls
-      REDIS_PC: redis-pc
+      # REDIS_URL: redis-urls
+      # REDIS_PC: redis-pc
+      REDIS_URL: host.docker.internal  # Special DNS for host access
+      REDIS_PC: host.docker.internal   # Same for PC redis
+      REDIS_PASSWORD: Welcome@Inf0r
       DB_HOST: postgres-1
     networks:
       - proxy
     extra_hosts:  
-      - "redis-urls:host-gateway"
-      - "redis-pc:host-gateway"
+      - "host.docker.internal:host-gateway"  # Required for Linux
+      # - "redis-urls:host-gateway"
+      # - "redis-pc:host-gateway"
       - kafka-1:host-gateway
       - postgres-1:host-gateway
 networks:
