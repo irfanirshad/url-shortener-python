@@ -1,7 +1,7 @@
 import os
 import redis
 import uuid
-from flask import Flask, request, g, jsonify, redirect, current_app
+from flask import Flask, request, g, jsonify, redirect, Response
 from threading import Thread
 import time
 from dataclasses import dataclass, field
@@ -16,7 +16,6 @@ from urllib.parse import urlparse
 import psycopg2
 from psycopg2 import sql
 import html
-import re
 from redis.exceptions import ConnectionError, AuthenticationError, TimeoutError, RedisError
 
 from flask_socketio import SocketIO, emit
@@ -82,25 +81,25 @@ def initialize_redis_client(pool):
         try:
             redis_client = redis.Redis(connection_pool=pool)
             if redis_client.ping():
-                print("Connected to Redis!")
+                logging.error("Connected to Redis!")
                 return redis_client
             else:
-                print("Failed to connect to Redis.")
+                logging.error("Failed to connect to Redis.")
 
         except AuthenticationError:
-            print("Redis authentication failed. Check your password.")
+            logging.error("Redis authentication failed. Check your password.")
             break
         except ConnectionError:
-            print(f"Redis connection failed. Retrying in {delay} seconds... (Attempt {attempt + 1}/{retries})")
+            logging.error(f"Redis connection failed. Retrying in {delay} seconds... (Attempt {attempt + 1}/{retries})")
             time.sleep(delay)
         except TimeoutError:
-            print(f"Redis connection timed out. Retrying in {delay} seconds... (Attempt {attempt + 1}/{retries})")
+            logging.error(f"Redis connection timed out. Retrying in {delay} seconds... (Attempt {attempt + 1}/{retries})")
             time.sleep(delay)
         except Exception as e:
-            print(f"Unexpected error connecting to Redis: {e}")
+            logging.error(f"Unexpected error connecting to Redis: {e}")
             break
 
-    print("Failed to initialize Redis after multiple attempts.")
+    logging.error("Failed to initialize Redis after multiple attempts.")
     return None
 
 def init_redis_clients():
@@ -367,7 +366,7 @@ def fetch_url_list():
             SELECT * 
             FROM urls 
             ORDER BY created_at DESC
-            LIMIT 100;
+            LIMIT 50;
         """
         cursor.execute(fetch_query)
         rows = cursor.fetchall()
@@ -392,21 +391,70 @@ def fetch_url_list():
         logging.error(f"Database error: {str(e)}")
         return jsonify({"success": False, "message": "Error fetching URLs."}), 500
 
-def send_time_ticks():
-    while True:
-        current_time = time.strftime("%Y-%m-%d %H:%M:%S")
-        socketio.emit('push-message', {'time': current_time})
-        socketio.sleep(3)
+
+@app.route('/api/v1/sse/url-updates', methods=['GET'])
+def sse_url_updates():
+    """Server-Sent Events endpoint for real-time URL updates"""
+    def generate_url_updates():
+        sample_urls = [
+            {'url': 'https://github.com/user/repo', 'short': 'abc123'},
+            {'url': 'https://stackoverflow.com/questions/123', 'short': 'def456'},
+            {'url': 'https://medium.com/article', 'short': 'ghi789'},
+            {'url': 'https://youtube.com/watch?v=abc', 'short': 'jkl012'},
+        ]
         
-@socketio.on('connect')
-def handle_connect():
-    logging.info('Client connected')
-    emit('connection-response', {'status': 'connected'})
-    socketio.start_background_task(send_time_ticks)
+        while True:
+            try:
+                current_time = datetime.utcnow().isoformat()
+                sample_url = sample_urls[int(time.time()) % len(sample_urls)]
+                
+                url_update = {
+                    'timestamp': current_time,
+                    'type': 'new_url' if int(time.time()) % 3 == 0 else 'click_update',
+                    'original_url': sample_url['url'],
+                    'short_code': sample_url['short'],
+                    'clicks': int(time.time()) % 50,
+                    'created_at': current_time
+                }
+                
+                yield f"data: {json.dumps(url_update)}\n\n"
+                time.sleep(4)  # Send URL update every 4 seconds
+                
+            except Exception as e:
+                logging.error(f"SSE URL updates error: {e}")
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                break
+    
+    return Response(
+        generate_url_updates(),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Headers': 'Cache-Control'
+        }
+    )
 
-@socketio.on('disconnect')
-def handle_disconnect():
-    logging.info('Client disconnected')
 
-if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+
+
+
+# def send_time_ticks():
+#     while True:
+#         current_time = time.strftime("%Y-%m-%d %H:%M:%S")
+#         socketio.emit('push-message', {'time': current_time})
+#         socketio.sleep(3)
+        
+# @socketio.on('connect')
+# def handle_connect():
+#     logging.info('Client connected')
+#     emit('connection-response', {'status': 'connected'})
+#     socketio.start_background_task(send_time_ticks)
+
+# @socketio.on('disconnect')
+# def handle_disconnect():
+#     logging.info('Client disconnected')
+
+# if __name__ == '__main__':
+#     socketio.run(app, host='0.0.0.0', port=5000, debug=True)

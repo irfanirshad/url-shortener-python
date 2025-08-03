@@ -25,7 +25,7 @@ export function URLForm({ isCustomMode }: URLFormProps) {
     setIsLoading(true);
 
     try {
-      const apiUrl = 'https://api.bigshort.one/api/v1/shorten';
+      const apiUrl = 'https://bigshort.one/api/v1/shorten';
       const requestData = isCustomMode
         ? { url, customUrl, isPublic }
         : { url, isPublic };

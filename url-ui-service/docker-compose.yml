@@ -1,17 +1,85 @@
 version: '3.8'
 
 services:
-  ui:
+  ui-service:
     build:
-      context: ./frontend  # Path to your frontend service
+      context: .
+      dockerfile: Dockerfile
     container_name: ui-service
     labels:
-      - "traefik.enable=true"  # Enable Traefik for this service
-      - "traefik.http.routers.ui.rule=Host(`www.bigshort.one`)"  # Your domain
-      - "traefik.http.routers.ui.entrypoints=web,websecure"  # Enable both HTTP and HTTPS
-      - "traefik.http.routers.ui.tls=true"  # Enable TLS (SSL)
-      - "traefik.http.routers.ui.tls.certresolver=myresolver"  # Use Let's Encrypt resolver
-      - "traefik.http.services.ui.loadbalancer.server.port=80"  # Frontend runs on port 80 inside container
-    depends_on:
-      - traefik  # Traefik service, so it can route traffic here
+      - "traefik.enable=true"
+
+      # Frontend service (serves the root path `/` and static assets)
+      - "traefik.http.services.frontend.loadbalancer.server.port=4173"  # Vite SPA port
+      # - "traefik.http.routers.frontend.rule=(Host(`bigshort.one`) || Host(`www.bigshort.one`)) && (PathPrefix(`/`) && !PathPrefix(`/api`) &&  !PathPrefix(`/{any:.+}`))"
+      - "traefik.http.routers.frontend.rule=(Host(`bigshort.one`) || Host(`www.bigshort.one`)) && (Path(`/`) || PathPrefix(`/assets`))"
+      - "traefik.http.routers.frontend.entrypoints=web"
+      # - "traefik.http.routers.frontend-secure.rule=(Host(`bigshort.one`) || Host(`www.bigshort.one`)) && (PathPrefix(`/`) && !PathPrefix(`/api`) &&  !PathPrefix(`/{any:.+}`))"
+      - "traefik.http.routers.frontend-secure.rule=(Host(`bigshort.one`) || Host(`www.bigshort.one`)) && (Path(`/`) || PathPrefix(`/assets`))"
+      - "traefik.http.routers.frontend-secure.entrypoints=websecure"
+      - "traefik.http.routers.frontend-secure.tls.certresolver=myresolver"
+
+      # - "traefik.http.services.ui.loadbalancer.server.port=4173"
+
+      # # Rule for requests to bigshort.one and www.bigshort.one (root path only)
+      # - "traefik.http.routers.ui.rule=(Host(`bigshort.one`) || Host(`www.bigshort.one`))" 
+      # # && Path(`/`)"  # if added seeems to not load bigshort.one idk why
+      # - "traefik.http.routers.ui.entrypoints=web"
+      # - "traefik.http.routers.ui.priority=10"  # Lower priority
+
+      # # Secure rule for requests to bigshort.one and www.bigshort.one (root path only)
+      # - "traefik.http.routers.ui-secure.rule=(Host(`bigshort.one`) || Host(`www.bigshort.one`))" 
+      # # && Path(`/`)"  
+      # - "traefik.http.routers.ui-secure.entrypoints=websecure"
+      # - "traefik.http.routers.ui-secure.tls.certresolver=myresolver"
+      # - "traefik.http.routers.ui-secure.priority=10"  # Lower priority
+        
+
+
+      # - "traefik.enable=true"
+      # - "traefik.http.services.ui.loadbalancer.server.port=4173"
+
+      # # Rule for non-API and non-short-url requests to bigshort.one and www.bigshort.one
+      # - "traefik.http.routers.ui.rule=(Host(`bigshort.one`) || Host(`www.bigshort.one`)) && !PathPrefix(`/v1`)"
+      # - "traefik.http.routers.ui.entrypoints=web"
+      # # - "traefik.http.routers.ui.priority=5"  # Medium priority
+
+      # # Secure rule for non-API and non-short-url requests to bigshort.one and www.bigshort.one
+      # - "traefik.http.routers.ui-secure.rule=(Host(`bigshort.one`) || Host(`www.bigshort.one`)) && !PathPrefix(`/v1`)"
+      # - "traefik.http.routers.ui-secure.entrypoints=websecure"
+      # - "traefik.http.routers.ui-secure.tls.certresolver=myresolver"
+      # # - "traefik.http.routers.ui-secure.priority=5"  # Medium priority
+
+      # # Catch-all rule for bigshort.one and www.bigshort.one (lower priority)
+      # - "traefik.http.routers.main.rule=Host(`bigshort.one`) || Host(`www.bigshort.one`)"
+      # - "traefik.http.routers.main.entrypoints=web"
+      # # - "traefik.http.routers.main.priority=10"  # Lower priority
+
+      # # Catch-all router for all other hosts (block them)
+      # # - "traefik.http.routers.catch-all.rule=HostRegexp(`{any:.+}`)"
+      # # - "traefik.http.routers.catch-all.entrypoints=web"
+      # # - "traefik.http.routers.catch-all.middlewares=block-other-hosts"
+      # # - "traefik.http.routers.catch-all.priority=20"  # Lowest priority
+
+
     restart: always
+
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4173"]
+      interval: 50s
+      timeout: 5s
+      retries: 3
+    networks:
+      - proxy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"  # Limit to 25% of a CPU core
+          memory: 256M   # Set memory limit to 256MB for the UI service
+        reservations:
+          memory: 256M   # Reservation of 256MB memory for UI
+
+networks:
+  proxy:
+    external: true
